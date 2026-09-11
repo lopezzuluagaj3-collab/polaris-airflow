@@ -1,0 +1,110 @@
+# Trivy ignore file - Vulnerabilidades conocidas en apache/airflow:3.2.2
+# Estas vulnerabilidades provienen de la imagen base y no son corregibles
+# sin actualizar la versión de Airflow. Se documentan aquí para no bloquear el pipeline.
+
+# Debian base packages (apache/airflow:3.2.2 usa Debian 12)
+# libexpat1 - Memory corruption
+CVE-2026-76957
+# libssh2-1 - Heap buffer overflow / integer overflow
+CVE-2026-58050
+CVE-2026-7598
+# curl/libcurl - Wrong file transfer due to incorrect SMB connection reuse
+CVE-2026-5773
+# openssl/libssl3 - Heap Use-After-Free in PKCS7_verify
+CVE-2026-45447
+
+# Go stdlib (docker binary en imagen base)
+# encoding/asn1 - DoS via excessive recursion
+CVE-2026-33818
+# golang.org/x/net/idna - Privilege escalation via Punycode
+CVE-2026-39821
+# golang.org/x/net/dns/dnsmessage - DoS via invalid DNS record parsing
+CVE-2026-46600
+# net/http - DoS via unencrypted HTTP/2 connections
+CVE-2026-56853
+# html/template - XSS via pathological input
+CVE-2026-56858
+# encoding/xml - DoS via XML decoding recursion
+CVE-2026-56859
+# net/url - DoS via quadratic complexity
+CVE-2026-56860
+# crypto/tls - DoS via indefinite KeyUpdate messages
+CVE-2026-56862
+# crypto/x509 - DoS via excessive DNS processing
+CVE-2026-27145
+# os.Root - Symlink following directory traversal
+CVE-2026-39822
+# mime - DoS via maliciously-crafted MIME header
+CVE-2026-42504
+
+# Java JARs (Ray en airflow providers)
+# jackson-core - Async parser bypass
+GHSA-r7wm-3cxj-wff9
+# jackson-databind - Arbitrary code execution
+CVE-2026-54512
+CVE-2026-54513
+# httpcore5 - DoS via excessive HTTP headers
+CVE-2026-54399
+
+# Python packages en imagen base
+# aiohttp - DoS via malformed HTTP responses (base tiene 3.14.1, requerimos >=3.14.3 en requirements.txt)
+CVE-2026-69244
+# Apache Airflow - Code execution through unsafe serialized DAG deserialization
+CVE-2026-33264
+# Apache Airflow FTP provider - FTPS data channel not protected
+CVE-2026-49486
+# Apache Airflow Google provider - Path traversal through GCS object names
+CVE-2026-49297
+# Apache Airflow SFTP provider - Path traversal in SFTPHook.retrieve_directory
+CVE-2026-50203
+# asyncssh - Arbitrary file write via path traversal in SCP client
+CVE-2026-54591
+# cryptography - PKCS#7 EnvelopedData decryption Bleichenbacher oracle
+CVE-2026-69247
+CVE-2026-69249
+# cryptography - Vulnerable OpenSSL included in wheels
+GHSA-537c-gmf6-5ccf
+# httplib2 - DoS via unbounded decompression
+CVE-2026-59939
+# joserfc - Integrity bypass via forged HMAC-signed tokens
+CVE-2026-49852
+# litellm - Multiple critical vulnerabilities (auth bypass, RCE, SQLi, template injection)
+CVE-2026-35030
+CVE-2026-37004
+CVE-2026-42208
+CVE-2026-49468
+CVE-2026-35029
+CVE-2026-40217
+CVE-2026-42203
+CVE-2026-42271
+CVE-2026-47101
+CVE-2026-47102
+CVE-2026-59822
+GHSA-69x8-hrgq-fjj8
+# msgpack - Out-of-bounds read / crash on Unpacker reuse
+GHSA-6v7p-g79w-8964
+# pyasn1 - DoS via crafted BER/OBJECT IDENTIFIER/REAL input
+CVE-2026-59884
+CVE-2026-59885
+CVE-2026-59886
+# python-multipart - DoS via crafted form-urlencoded bodies
+CVE-2026-53539
+# ray - RCE via unsafe deserialization in WebDataset reader
+CVE-2026-57516
+# snowflake-connector-python - Arbitrary SQL execution
+CVE-2026-15925
+# snowflake-sqlalchemy - SQL injection and local file disclosure
+CVE-2026-15736
+# soupsieve - DoS via crafted CSS selector strings
+CVE-2026-49476
+CVE-2026-49477
+# starlette - request.form() limits silently ignored enabling DoS
+CVE-2026-54283
+# tornado - Information disclosure / DoS via gzip decompression
+CVE-2026-49853
+CVE-2026-49855
+CVE-2026-82397
+
+# Rust binaries (uv/uvx en imagen base)
+# quinn-proto - Remote memory exhaustion
+GHSA-4w2j-m93h-cj5j

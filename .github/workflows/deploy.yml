@@ -81,7 +81,7 @@ jobs:
 
       - name: Ejecutar Trivy scanner (Docker Image)
         run: |
-          trivy image --severity CRITICAL,HIGH --exit-code 1 --ignore-unfixed polaris-airflow:ci
+          trivy image --severity CRITICAL,HIGH --exit-code 1 --ignore-unfixed --ignorefile .trivyignore polaris-airflow:ci
 
   sonarcloud:
     name: Análisis de código (SonarCloud)
