@@ -81,8 +81,11 @@ def create_model_if_needed(connection, models_sql: Path = MODELS_SQL) -> None:
         return
     if not models_sql.exists():
         raise FileNotFoundError(f"No existe el SQL del modelo: {models_sql}")
+    sql_content = models_sql.read_text(encoding="utf-8")
+    statements = [stmt.strip() for stmt in sql_content.split(";") if stmt.strip()]
     with connection.cursor() as cursor:
-        cursor.execute(models_sql.read_text(encoding="utf-8"))
+        for statement in statements:
+            cursor.execute(statement)
     print(f"Modelo creado desde: {models_sql}")
 
 

@@ -269,14 +269,13 @@ class TestCreateModelIfNeeded:
 
     def test_executes_sql_when_model_missing(self, sample_sql_file):
         conn = _make_mock_connection()
-        expected_sql = sample_sql_file.read_text(encoding="utf-8")
         with patch(
             "etl.load.postgres_loader.model_exists", return_value=False
         ):
             create_model_if_needed(conn, sample_sql_file)
 
         conn.cursor.return_value.__enter__.return_value.execute.assert_called_once_with(
-            expected_sql
+            "CREATE SCHEMA IF NOT EXISTS analytics"
         )
 
     def test_raises_when_sql_file_missing(self, tmp_path):
