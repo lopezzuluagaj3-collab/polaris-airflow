@@ -8,7 +8,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 DATASET = "olistbr/brazilian-ecommerce"
-DATA_DIR = Path(__file__).resolve().parents[1] / "data"
+DATA_DIR = Path(os.environ.get("ETL_DATA_DIR", "/opt/airflow/data"))
 REQUIRED_DATA_FILES = {
     "olist_orders_dataset.csv",
     "olist_order_items_dataset.csv",
