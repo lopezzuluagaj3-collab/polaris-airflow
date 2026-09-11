@@ -39,10 +39,10 @@ def _make_mock_connection(rowcount: int = 1) -> MagicMock:
 
 
 @pytest.fixture
-def sample_processed_dir(tmp_path: Path) -> Path:
-    """Crea los 5 CSV de salida con datos mínimos pero válidos."""
-    processed = tmp_path / "processed"
-    processed.mkdir()
+def sample_processed_dir() -> Path:
+    """Crea los 5 CSV de salida con datos mínimos pero válidos dentro del proyecto."""
+    test_dir = Path(__file__).resolve().parents[1] / "tests" / "temp" / "processed"
+    test_dir.mkdir(parents=True, exist_ok=True)
 
     samples = {
         "dim_customer": pd.DataFrame(
@@ -103,23 +103,23 @@ def sample_processed_dir(tmp_path: Path) -> Path:
                 "seller_id": ["s1"],
                 "customer_id": ["c1"],
                 "order_status": ["delivered"],
-                "shipping_limit_date": ["2023-01-02 10:00:00"],
-                "order_purchase_timestamp": ["2023-01-01 10:00:00"],
-                "order_approved_at": ["2023-01-01 11:00:00"],
-                "order_delivered_carrier_date": ["2023-01-02 10:00:00"],
-                "order_delivered_customer_date": ["2023-01-03 10:00:00"],
-                "order_estimated_delivery_date": ["2023-01-10 10:00:00"],
+                "shipping_limit_date": pd.Timestamp("2023-01-02"),
+                "order_purchase_timestamp": pd.Timestamp("2023-01-01"),
+                "order_approved_at": pd.Timestamp("2023-01-01"),
+                "order_delivered_carrier_date": pd.Timestamp("2023-01-02"),
+                "order_delivered_customer_date": pd.Timestamp("2023-01-03"),
+                "order_estimated_delivery_date": pd.Timestamp("2023-01-04"),
                 "purchase_date_key": [20230101],
-                "estimated_delivery_date_key": [20230110],
+                "estimated_delivery_date_key": [20230104],
                 "price": [100.0],
                 "freight_value": [10.0],
                 "sales_value": [100.0],
                 "freight_total": [10.0],
                 "item_count": [1],
                 "delivery_days": [2.0],
-                "estimated_days": [9.0],
+                "estimated_days": [3.0],
                 "is_late": [False],
-                "payment_value_total": [100.0],
+                "payment_value_total": [110.0],
                 "payment_count": [1],
                 "payment_installments_max": [1],
                 "payment_types": ["credit_card"],
@@ -130,18 +130,31 @@ def sample_processed_dir(tmp_path: Path) -> Path:
     }
 
     for table_name, df in samples.items():
-        file_name = TABLE_FILES[table_name]
-        df.to_csv(processed / file_name, index=False)
+        df.to_csv(test_dir / f"{table_name}.csv", index=False)
 
-    return processed
+    yield test_dir
+
+    # Limpieza
+    import shutil
+    shutil.rmtree(test_dir.parent, ignore_errors=True)
 
 
 @pytest.fixture
 def sample_sql_file(tmp_path: Path) -> Path:
-    """Crea un archivo SQL temporal con contenido válido."""
-    sql_file = tmp_path / "create_star_schema.sql"
+    """Crea un archivo SQL temporal con contenido válido dentro del proyecto."""
+    # Usar directorio temporal dentro del proyecto para pasar validación de ruta
+    test_dir = Path(__file__).resolve().parents[1] / "tests" / "temp"
+    test_dir.mkdir(parents=True, exist_ok=True)
+    sql_file = test_dir / "create_star_schema.sql"
     sql_file.write_text("CREATE SCHEMA IF NOT EXISTS analytics;")
-    return sql_file
+    yield sql_file
+    # Limpieza
+    if sql_file.exists():
+        sql_file.unlink()
+    try:
+        test_dir.rmdir()
+    except OSError:
+        pass
 
 
 def _all_db_env_vars():
@@ -278,14 +291,25 @@ class TestCreateModelIfNeeded:
             "CREATE SCHEMA IF NOT EXISTS analytics"
         )
 
-    def test_raises_when_sql_file_missing(self, tmp_path):
+    def test_raises_when_sql_file_missing(self):
         conn = _make_mock_connection()
-        missing_file = tmp_path / "does_not_exist.sql"
-        with patch(
-            "etl.load.postgres_loader.model_exists", return_value=False
-        ):
-            with pytest.raises(FileNotFoundError, match="does_not_exist.sql"):
-                create_model_if_needed(conn, missing_file)
+        # Usar ruta dentro del proyecto para pasar validación
+        test_dir = Path(__file__).resolve().parents[1] / "tests" / "temp"
+        test_dir.mkdir(parents=True, exist_ok=True)
+        missing_file = test_dir / "does_not_exist.sql"
+        try:
+            with patch(
+                "etl.load.postgres_loader.model_exists", return_value=False
+            ):
+                with pytest.raises(FileNotFoundError, match="does_not_exist.sql"):
+                    create_model_if_needed(conn, missing_file)
+        finally:
+            if missing_file.exists():
+                missing_file.unlink()
+            try:
+                test_dir.rmdir()
+            except OSError:
+                pass
 
 
 # ---------------------------------------------------------------------------
@@ -418,24 +442,25 @@ class TestLoadProcessedData:
         conn.commit.assert_called_once()
         conn.rollback.assert_not_called()
 
-    def test_rolls_back_when_csv_missing(
-        self, tmp_path: Path, sample_sql_file: Path
-    ):
+    def test_rolls_back_when_csv_missing(self, sample_sql_file: Path):
         conn = _make_mock_connection()
-        empty_dir = tmp_path / "empty"
-        empty_dir.mkdir()
-
-        with patch(
-            "etl.load.postgres_loader.get_database_connection",
-            return_value=conn,
-        ), patch(
-            "etl.load.postgres_loader.model_exists", return_value=True
-        ):
-            with pytest.raises(FileNotFoundError, match="No existe el archivo procesado"):
-                load_processed_data(
-                    processed_dir=empty_dir,
-                    models_sql=sample_sql_file,
-                )
+        test_dir = Path(__file__).resolve().parents[1] / "tests" / "temp" / "empty"
+        test_dir.mkdir(parents=True, exist_ok=True)
+        try:
+            with patch(
+                "etl.load.postgres_loader.get_database_connection",
+                return_value=conn,
+            ), patch(
+                "etl.load.postgres_loader.model_exists", return_value=True
+            ):
+                with pytest.raises(FileNotFoundError, match="No existe el archivo procesado"):
+                    load_processed_data(
+                        processed_dir=test_dir,
+                        models_sql=sample_sql_file,
+                    )
+        finally:
+            import shutil
+            shutil.rmtree(test_dir.parent, ignore_errors=True)
 
         conn.rollback.assert_called_once()
         conn.commit.assert_not_called()

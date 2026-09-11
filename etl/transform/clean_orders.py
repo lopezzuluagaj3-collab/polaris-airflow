@@ -13,9 +13,19 @@ from pathlib import Path
 import pandas as pd
 
 
-PROJECT_DIR = Path(__file__).resolve().parents[1]
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 DEFAULT_DATA_DIR = PROJECT_DIR / "data"
 DEFAULT_OUTPUT_DIR = DEFAULT_DATA_DIR / "processed"
+
+
+def _validate_path(path: Path, base: Path) -> Path:
+    """Valida que la ruta resuelta esté dentro del directorio base permitido."""
+    resolved = path.resolve()
+    base_resolved = base.resolve()
+    if not str(resolved).startswith(str(base_resolved)):
+        raise ValueError(f"Ruta no permitida: {path} (fuera de {base})")
+    return resolved
+
 
 CSV_FILES = {
 	"orders": "olist_orders_dataset.csv",
@@ -50,15 +60,16 @@ ORDER_DATE_COLUMNS = [
 
 
 def load_source_tables(data_dir: Path = DEFAULT_DATA_DIR) -> dict[str, pd.DataFrame]:
-	"""Carga los ocho CSV necesarios para construir el modelo estrella."""
-	tables = {}
-	for table_name, file_name in CSV_FILES.items():
-		path = data_dir / file_name
-		if not path.exists():
-			raise FileNotFoundError(f"No existe el archivo de entrada: {path}")
-		tables[table_name] = pd.read_csv(path)
-		print(f"Cargada {table_name}: {tables[table_name].shape}")
-	return tables
+    """Carga los ocho CSV necesarios para construir el modelo estrella."""
+    data_dir = _validate_path(data_dir, PROJECT_DIR)
+    tables = {}
+    for table_name, file_name in CSV_FILES.items():
+        path = data_dir / file_name
+        if not path.exists():
+            raise FileNotFoundError(f"No existe el archivo de entrada: {path}")
+        tables[table_name] = pd.read_csv(path)
+        print(f"Cargada {table_name}: {tables[table_name].shape}")
+    return tables
 
 
 def parse_order_dates(orders: pd.DataFrame) -> pd.DataFrame:
@@ -184,31 +195,33 @@ def build_fact_sales(
 
 
 def transform_dataset(data_dir: Path = DEFAULT_DATA_DIR, output_dir: Path = DEFAULT_OUTPUT_DIR) -> dict[str, pd.DataFrame]:
-	"""Ejecuta toda la transformación y escribe las tablas listas para cargar."""
-	tables = load_source_tables(data_dir)
-	orders = parse_order_dates(tables["orders"])
-	transformed = {
-		"dim_customer": build_dim_customer(tables["customers"]),
-		"dim_product": build_dim_product(tables["products"], tables["category_translation"]),
-		"dim_seller": build_dim_seller(tables["sellers"]),
-		"dim_date": build_dim_date(orders),
-		"fact_sales": build_fact_sales(orders, tables["order_items"], tables["order_payments"], tables["order_reviews"]),
-	}
+    """Ejecuta toda la transformación y escribe las tablas listas para cargar."""
+    data_dir = _validate_path(data_dir, PROJECT_DIR)
+    output_dir = _validate_path(output_dir, PROJECT_DIR)
+    tables = load_source_tables(data_dir)
+    orders = parse_order_dates(tables["orders"])
+    transformed = {
+        "dim_customer": build_dim_customer(tables["customers"]),
+        "dim_product": build_dim_product(tables["products"], tables["category_translation"]),
+        "dim_seller": build_dim_seller(tables["sellers"]),
+        "dim_date": build_dim_date(orders),
+        "fact_sales": build_fact_sales(orders, tables["order_items"], tables["order_payments"], tables["order_reviews"]),
+    }
 
-	output_dir.mkdir(parents=True, exist_ok=True)
-	for table_name, dataframe in transformed.items():
-		output_path = output_dir / f"{table_name}.csv"
-		dataframe.to_csv(output_path, index=False)
-		print(f"Escrita {output_path}: {dataframe.shape}")
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for table_name, dataframe in transformed.items():
+        output_path = output_dir / f"{table_name}.csv"
+        dataframe.to_csv(output_path, index=False)
+        print(f"Escrita {output_path}: {dataframe.shape}")
 
-	expected_fact_rows = len(tables["order_items"])
-	actual_fact_rows = len(transformed["fact_sales"])
-	if actual_fact_rows != expected_fact_rows:
-		raise ValueError(
-			f"El grano de fact_sales cambió: se esperaban {expected_fact_rows:,} filas y quedaron {actual_fact_rows:,}."
-		)
-	print(f"Validación de grano OK: fact_sales conserva {actual_fact_rows:,} líneas de pedido.")
-	return transformed
+    expected_fact_rows = len(tables["order_items"])
+    actual_fact_rows = len(transformed["fact_sales"])
+    if actual_fact_rows != expected_fact_rows:
+        raise ValueError(
+            f"El grano de fact_sales cambió: se esperaban {expected_fact_rows:,} filas y quedaron {actual_fact_rows:,}."
+        )
+    print(f"Validación de grano OK: fact_sales conserva {actual_fact_rows:,} líneas de pedido.")
+    return transformed
 
 
 def parse_args() -> argparse.Namespace:

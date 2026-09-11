@@ -11,11 +11,21 @@ from dotenv import load_dotenv
 from psycopg2 import sql
 from psycopg2.extras import execute_values
 
-PROJECT_DIR = Path(__file__).resolve().parents[1]
+PROJECT_DIR = Path(__file__).resolve().parents[2]
 DATA_DIR = PROJECT_DIR / "data"
 PROCESSED_DIR = DATA_DIR / "processed"
 MODELS_SQL = PROJECT_DIR / "sql" / "models.sql"
 load_dotenv(PROJECT_DIR / ".env")
+
+
+def _validate_path(path: Path, base: Path) -> Path:
+    """Valida que la ruta resuelta esté dentro del directorio base permitido."""
+    resolved = path.resolve()
+    base_resolved = base.resolve()
+    if not str(resolved).startswith(str(base_resolved)):
+        raise ValueError(f"Ruta no permitida: {path} (fuera de {base})")
+    return resolved
+
 
 TABLE_FILES = {
     "dim_customer": "dim_customer.csv",
@@ -79,6 +89,7 @@ def create_model_if_needed(connection, models_sql: Path = MODELS_SQL) -> None:
     if model_exists(connection):
         print("Modelo analytics ya existe; se omite su creación.")
         return
+    models_sql = _validate_path(models_sql, PROJECT_DIR)
     if not models_sql.exists():
         raise FileNotFoundError(f"No existe el SQL del modelo: {models_sql}")
     sql_content = models_sql.read_text(encoding="utf-8")
@@ -127,6 +138,8 @@ def load_csv_idempotently(connection, table_name: str, csv_path: Path, batch_siz
 
 def load_processed_data(processed_dir: Path = PROCESSED_DIR, models_sql: Path = MODELS_SQL, batch_size: int = 2_000) -> dict[str, int]:
     """Crea el modelo si hace falta y carga todas las salidas transformadas."""
+    processed_dir = _validate_path(processed_dir, PROJECT_DIR)
+    models_sql = _validate_path(models_sql, PROJECT_DIR)
     connection = get_database_connection()
     try:
         connection.autocommit = False

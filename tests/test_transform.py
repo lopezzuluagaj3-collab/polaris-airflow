@@ -266,10 +266,10 @@ def test_build_fact_sales_preserves_grain(
 # ---------------------------------------------------------------------------
 
 @pytest.fixture
-def sample_data_dir(tmp_path: Path) -> Path:
-    """Crea los 8 CSV de origen en un directorio temporal."""
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
+def sample_data_dir() -> Path:
+    """Crea los 8 CSV de origen en un directorio temporal dentro del proyecto."""
+    test_dir = Path(__file__).resolve().parents[1] / "tests" / "temp" / "data"
+    test_dir.mkdir(parents=True, exist_ok=True)
 
     files = {
         CSV_FILES["orders"]: pd.DataFrame(
@@ -350,36 +350,49 @@ def sample_data_dir(tmp_path: Path) -> Path:
     }
 
     for name, df in files.items():
-        df.to_csv(data_dir / name, index=False)
+        df.to_csv(test_dir / name, index=False)
 
-    return data_dir
+    yield test_dir
+
+    # Limpieza
+    import shutil
+    shutil.rmtree(test_dir.parent, ignore_errors=True)
 
 
-def test_transform_dataset_end_to_end(sample_data_dir: Path, tmp_path: Path):
+def test_transform_dataset_end_to_end(sample_data_dir: Path):
     """Ejecuta el pipeline completo y verifica las salidas."""
-    output_dir = tmp_path / "processed"
+    output_dir = Path(__file__).resolve().parents[1] / "tests" / "temp" / "processed"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    result = transform_dataset(data_dir=sample_data_dir, output_dir=output_dir)
+    try:
+        result = transform_dataset(data_dir=sample_data_dir, output_dir=output_dir)
 
-    expected_tables = {"dim_customer", "dim_product", "dim_seller", "dim_date", "fact_sales"}
-    assert set(result.keys()) == expected_tables
+        expected_tables = {"dim_customer", "dim_product", "dim_seller", "dim_date", "fact_sales"}
+        assert set(result.keys()) == expected_tables
 
-    for table_name in expected_tables:
-        output_path = output_dir / f"{table_name}.csv"
-        assert output_path.exists(), f"Falta el archivo de salida: {output_path}"
+        for table_name in expected_tables:
+            output_path = output_dir / f"{table_name}.csv"
+            assert output_path.exists(), f"Falta el archivo de salida: {output_path}"
 
-    fact = pd.read_csv(output_dir / "fact_sales.csv")
-    order_items = pd.read_csv(sample_data_dir / CSV_FILES["order_items"])
-    assert len(fact) == len(order_items), "fact_sales debe conservar el grano de order_items"
+        fact = pd.read_csv(output_dir / "fact_sales.csv")
+        order_items = pd.read_csv(sample_data_dir / CSV_FILES["order_items"])
+        assert len(fact) == len(order_items), "fact_sales debe conservar el grano de order_items"
+    finally:
+        import shutil
+        shutil.rmtree(output_dir, ignore_errors=True)
 
 
-def test_transform_dataset_missing_file_raises(tmp_path: Path):
+def test_transform_dataset_missing_file_raises():
     """Si falta un CSV de entrada, lanza FileNotFoundError."""
-    data_dir = tmp_path / "data"
-    data_dir.mkdir()
+    test_dir = Path(__file__).resolve().parents[1] / "tests" / "temp" / "data_missing"
+    test_dir.mkdir(parents=True, exist_ok=True)
 
-    with pytest.raises(FileNotFoundError, match="olist_orders_dataset.csv"):
-        transform_dataset(data_dir=data_dir, output_dir=tmp_path / "out")
+    try:
+        with pytest.raises(FileNotFoundError, match="olist_orders_dataset.csv"):
+            transform_dataset(data_dir=test_dir, output_dir=test_dir.parent / "out")
+    finally:
+        import shutil
+        shutil.rmtree(test_dir.parent, ignore_errors=True)
 
 
 def test_region_by_state_coverage():

@@ -5,7 +5,7 @@ USER 0
 
 USER 50000
 COPY requirements.txt /requirements.txt
-RUN pip install --no-cache-dir --user -r /requirements.txt
+RUN pip install --no-cache-dir -r /requirements.txt
 
 COPY --chown=50000:0 etl/ /opt/airflow/etl/
 COPY --chown=50000:0 sql/ /opt/airflow/sql/
