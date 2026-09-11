@@ -1,0 +1,179 @@
+name: polaris-airflow CI/CD
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "etl/**"
+      - "sql/**"
+      - "tests/**"
+      - "Dockerfile"
+      - "requirements.txt"
+      - ".github/workflows/deploy.yml"
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+jobs:
+  lint:
+    name: Hadolint (Dockerfile lint)
+    runs-on: ubuntu-latest
+    container:
+      image: hadolint/hadolint:latest-alpine
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Lint Dockerfile
+        run: hadolint Dockerfile
+
+  Test_Suite:
+    name: Tests unitarios y Cobertura
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Configurar Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065
+        with:
+          python-version: '3.12'
+
+      - name: Instalar dependencias
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest pytest-cov -r requirements.txt
+
+      - name: Ejecutar pruebas con Pytest
+        run: python -m pytest tests/ --cov=etl --cov-report=xml:coverage.xml -v --tb=short --maxfail=1
+
+      - name: Guardar reporte de cobertura
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: coverage-report
+          path: coverage.xml
+
+  trivy:
+    name: Escaneo de vulnerabilidades (Trivy CLI)
+    runs-on: ubuntu-latest
+    needs: [Test_Suite, lint]
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Construir imagen Docker
+        run: docker build -t polaris-airflow:ci .
+
+      - name: Smoke Test (Validar imagen de Airflow)
+        run: |
+          docker run --rm polaris-airflow:ci airflow version
+          docker run --rm polaris-airflow:ci python -c "import pandas, psycopg2; print('Importaciones críticas OK')"
+
+      - name: Install Trivy CLI
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y wget apt-transport-https gnupg
+          wget -qO - https://aquasecurity.github.io/trivy-repo/deb/public.key | gpg --dearmor | sudo tee /usr/share/keyrings/trivy.gpg > /dev/null
+          echo "deb [signed-by=/usr/share/keyrings/trivy.gpg] https://aquasecurity.github.io/trivy-repo/deb generic main" | sudo tee /etc/apt/sources.list.d/trivy.list
+          sudo apt-get update -y
+          sudo apt-get install -y trivy
+          trivy --version
+
+      - name: Ejecutar Trivy scanner (Docker Image)
+        run: |
+          trivy image --severity CRITICAL,HIGH --exit-code 1 --ignore-unfixed polaris-airflow:ci
+
+  sonarcloud:
+    name: Análisis de código (SonarCloud)
+    runs-on: ubuntu-latest
+    needs: Test_Suite
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          fetch-depth: 0
+
+      - name: Descargar reporte de cobertura
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: coverage-report
+
+      - name: SonarCloud Scan
+        uses: SonarSource/sonarqube-scan-action@689fb39b34b9aa95ebc5f8f119343ddd51542402
+        with:
+          projectBaseDir: .
+          args: >
+            -Dsonar.projectKey=lopezzuluagaj3-collab_polaris-airflow
+            -Dsonar.organization=lopezzuluagaj3-collab
+            -Dsonar.python.version=3.12
+            -Dsonar.sources=etl/
+            -Dsonar.tests=tests/
+            -Dsonar.python.coverage.reportPaths=coverage.xml
+            -Dsonar.exclusions=**/__pycache__/**,**.pyc
+            -Dsonar.qualitygate.wait=false
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+          SONAR_HOST_URL: https://sonarcloud.io
+
+  notify:
+    name: Notificación por email
+    runs-on: ubuntu-latest
+    needs: [Test_Suite, lint, trivy, sonarcloud]
+    if: always()
+    steps:
+      - name: Enviar correo con resultado de Trivy, SonarCloud y tests
+        uses: dawidd6/action-send-mail@4226df7daafa6fc901a43789c49bf7ab309066e7
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.SMTP_USERNAME }}
+          password: ${{ secrets.SMTP_PASSWORD }}
+          subject: "CI polaris-airflow - Resultado: ${{ needs.trivy.result == 'success' && needs.sonarcloud.result == 'success' && 'EXITO' || 'FALLO' }}"
+          to: ${{ secrets.NOTIFY_EMAIL }}
+          from: "CI polaris-airflow <${{ secrets.SMTP_USERNAME }}>"
+          body: |
+            Pipeline de CI para polaris-airflow ejecutado.
+
+            Estado de los Jobs:
+            - Tests unitarios y Cobertura: ${{ needs.Test_Suite.result }}
+            - Linting Dockerfile: ${{ needs.lint.result }}
+            - Escaneo Trivy y Smoke Test: ${{ needs.trivy.result }}
+            - Análisis SonarCloud: ${{ needs.sonarcloud.result }}
+
+            Commit: ${{ github.sha }}
+            Rama/Ref: ${{ github.ref_name }}
+
+
+  cd:
+    name: "CD: Build, Push y Trigger Deploy"
+    runs-on: ubuntu-latest
+    needs: trivy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout del código
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Login a GHCR
+        uses: docker/login-action@b45d80f862d83dbcd57f89517bcf500b2ab88fb2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build y push de la imagen
+        uses: docker/build-push-action@31159d49c0d4756269a0940a750801a1ea5d7003
+        with:
+          context: .
+          push: true
+          tags: ghcr.io/lopezzuluagaj3-collab/polaris-airflow:${{ github.sha }}
+
+      - name: Trigger deploy en polaris-kubernetes
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.CROSS_REPO_TOKEN }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/lopezzuluagaj3-collab/polaris-kubernetes/dispatches \
+            -d '{"event_type":"deploy-airflow","client_payload":{"image_tag":"${{ github.sha }}"}}'

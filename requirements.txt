@@ -1,0 +1,7 @@
+pandas>=2.0,<3.0
+psycopg2-binary>=2.9,<3.0
+python-dotenv>=1.0,<2.0
+kaggle>=2.0,<3.0
+pendulum>=3.0,<4.0
+apache-airflow-providers-standard>=1.0,<2.0
+apache-airflow-providers-postgres>=6.0,<7.0
