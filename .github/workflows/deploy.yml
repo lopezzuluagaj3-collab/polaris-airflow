@@ -168,7 +168,9 @@ jobs:
         with:
           context: .
           push: true
-          tags: ghcr.io/lopezzuluagaj3-collab/polaris-airflow:${{ github.sha }}
+          tags: |
+            ghcr.io/lopezzuluagaj3-collab/polaris-airflow:${{ github.sha }}
+            ghcr.io/lopezzuluagaj3-collab/polaris-airflow:latest
 
       - name: Trigger deploy en polaris-kubernetes
         run: |
